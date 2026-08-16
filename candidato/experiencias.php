@@ -1,0 +1,28 @@
+<?php
+
+declare(strict_types=1);
+require_once __DIR__ . '/../includes/funcoes.php'; require_once __DIR__ . '/../includes/conexao.php';
+$candidatoId=obterCandidatoId($pdo); $editarId=filter_var($_GET['editar']??null,FILTER_VALIDATE_INT)?:0; $experienciaEditada=null;
+if($editarId){$q=$pdo->prepare('SELECT * FROM experiencias WHERE id=? AND candidato_id=? LIMIT 1');$q->execute([$editarId,$candidatoId]);$experienciaEditada=$q->fetch()?:null;}
+$q=$pdo->prepare('SELECT * FROM experiencias WHERE candidato_id=? ORDER BY emprego_atual DESC, data_fim DESC, data_inicio DESC');$q->execute([$candidatoId]);$experiencias=$q->fetchAll();
+$sucesso=obterFlash('sucesso');$erros=obterFlash('erros',[]);$tituloPagina='Experiências profissionais'; require_once __DIR__ . '/../includes/header.php'; require_once __DIR__ . '/../includes/menu.php';
+?>
+<main class="container py-5">
+    <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-4"><div><p class="text-primary fw-semibold mb-1">Currículo digital</p><h1 class="h2 mb-1">Experiências profissionais</h1><p class="text-secondary mb-0">Conte às empresas sobre sua trajetória profissional.</p></div><a href="<?=url('candidato/painel.php')?>" class="btn btn-outline-secondary align-self-start">Voltar ao painel</a></div>
+    <?php if($sucesso):?><div class="alert alert-success"><?=escapar((string)$sucesso)?></div><?php endif;?><?php if($erros):?><div class="alert alert-danger"><ul class="mb-0"><?php foreach($erros as $erro):?><li><?=escapar((string)$erro)?></li><?php endforeach;?></ul></div><?php endif;?>
+    <div class="row g-4"><div class="col-lg-5"><div class="card shadow-sm border-0"><div class="card-body p-4"><h2 class="h5 mb-3"><?=$experienciaEditada?'Editar experiência':'Adicionar experiência'?></h2>
+        <form action="<?=url('actions/salvar_experiencia.php')?>" method="post"><input type="hidden" name="csrf_token" value="<?=escapar(tokenCsrf())?>"><input type="hidden" name="id" value="<?=(int)($experienciaEditada['id']??0)?>">
+            <div class="mb-3"><label for="empresa_experiencia" class="form-label">Empresa</label><input type="text" id="empresa_experiencia" name="empresa" class="form-control" maxlength="180" required value="<?=escapar((string)($experienciaEditada['empresa']??''))?>"></div>
+            <div class="mb-3"><label for="cargo" class="form-label">Cargo</label><input type="text" id="cargo" name="cargo" class="form-control" maxlength="150" required value="<?=escapar((string)($experienciaEditada['cargo']??''))?>"></div>
+            <div class="mb-3"><label for="descricao" class="form-label">Descrição das atividades</label><textarea id="descricao" name="descricao" class="form-control" rows="5" maxlength="3000" required><?=escapar((string)($experienciaEditada['descricao']??''))?></textarea></div>
+            <div class="row g-3 mb-3"><div class="col-md-6"><label for="experiencia_inicio" class="form-label">Data de início</label><input type="date" id="experiencia_inicio" name="data_inicio" class="form-control" required value="<?=escapar((string)($experienciaEditada['data_inicio']??''))?>"></div><div class="col-md-6"><label for="experiencia_fim" class="form-label">Data de término</label><input type="date" id="experiencia_fim" name="data_fim" class="form-control" data-end-date value="<?=escapar((string)($experienciaEditada['data_fim']??''))?>"></div></div>
+            <div class="form-check mb-4"><input class="form-check-input" type="checkbox" id="emprego_atual" name="emprego_atual" value="1" data-current-toggle data-target="#experiencia_fim" <?=!empty($experienciaEditada['emprego_atual'])?'checked':''?>><label class="form-check-label" for="emprego_atual">Este é meu emprego atual</label></div>
+            <div class="d-flex gap-2"><button class="btn btn-success"><?=$experienciaEditada?'Salvar alterações':'Adicionar experiência'?></button><?php if($experienciaEditada):?><a href="<?=url('candidato/experiencias.php')?>" class="btn btn-outline-secondary">Cancelar</a><?php endif;?></div>
+        </form>
+    </div></div></div>
+    <div class="col-lg-7"><h2 class="h5 mb-3">Experiências cadastradas</h2><?php if(!$experiencias):?><div class="alert alert-light border">Nenhuma experiência cadastrada.</div><?php endif;?>
+        <?php foreach($experiencias as $experiencia):?><article class="card shadow-sm border-0 mb-3"><div class="card-body p-4"><div class="d-flex justify-content-between gap-3"><div><h3 class="h5 mb-1"><?=escapar($experiencia['cargo'])?></h3><p class="fw-semibold mb-2"><?=escapar($experiencia['empresa'])?></p><p class="text-secondary mb-2"><?=nl2br(escapar((string)$experiencia['descricao']))?></p><small class="text-secondary"><?=date('d/m/Y',strtotime($experiencia['data_inicio']))?> — <?=$experiencia['emprego_atual']?'Atual':date('d/m/Y',strtotime($experiencia['data_fim']))?></small></div><div class="d-flex gap-2 align-items-start"><a href="<?=url('candidato/experiencias.php?editar='.(int)$experiencia['id'])?>" class="btn btn-sm btn-outline-primary" aria-label="Editar experiência"><i class="fa-solid fa-pen"></i></a><form action="<?=url('actions/excluir_experiencia.php')?>" method="post" onsubmit="return confirm('Excluir esta experiência?');"><input type="hidden" name="csrf_token" value="<?=escapar(tokenCsrf())?>"><input type="hidden" name="id" value="<?=(int)$experiencia['id']?>"><button class="btn btn-sm btn-outline-danger" aria-label="Excluir experiência"><i class="fa-solid fa-trash"></i></button></form></div></div></div></article><?php endforeach;?>
+    </div></div>
+</main>
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+

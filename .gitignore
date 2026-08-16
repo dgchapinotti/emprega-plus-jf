@@ -1,0 +1,18 @@
+# Credenciais privadas
+/includes/credenciais.php
+/includes/credenciais_email.php
+.env
+*.log
+
+# Backups com dados
+/BANCO DE DADOS PHPAdmin/
+*.sql.zip
+
+# Documentos pessoais
+*.docx
+
+# Sistema e editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

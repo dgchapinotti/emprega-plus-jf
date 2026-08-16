@@ -1,0 +1,11 @@
+<?php
+
+declare(strict_types=1);
+require_once __DIR__ . '/../includes/funcoes.php'; require_once __DIR__ . '/../includes/conexao.php';
+$candidatoId=obterCandidatoId($pdo); if($_SERVER['REQUEST_METHOD']!=='POST')redirecionar('candidato/experiencias.php'); if(!validarTokenCsrf($_POST['csrf_token']??null)){definirFlash('erros',['Sua sessão expirou.']);redirecionar('candidato/experiencias.php');}
+$id=filter_var($_POST['id']??null,FILTER_VALIDATE_INT)?:0;$empresa=trim((string)($_POST['empresa']??''));$cargo=trim((string)($_POST['cargo']??''));$descricao=trim((string)($_POST['descricao']??''));$inicio=(string)($_POST['data_inicio']??'');$fim=(string)($_POST['data_fim']??'');$atual=($_POST['emprego_atual']??null)==='1';$erros=[];
+if($empresa==='')$erros[]='Informe a empresa.';if($cargo==='')$erros[]='Informe o cargo.';if($descricao==='')$erros[]='Descreva as atividades realizadas.';if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$inicio))$erros[]='Informe uma data de início válida.';if(!$atual&&!preg_match('/^\d{4}-\d{2}-\d{2}$/',$fim))$erros[]='Informe a data de término ou marque emprego atual.';if(!$atual&&$inicio&&$fim&&$fim<$inicio)$erros[]='O término não pode ser anterior ao início.';
+if($erros){definirFlash('erros',$erros);redirecionar('candidato/experiencias.php'.($id?'?editar='.$id:''));}$fim=$atual?null:$fim;
+if($id){$s=$pdo->prepare('UPDATE experiencias SET empresa=?,cargo=?,descricao=?,data_inicio=?,data_fim=?,emprego_atual=? WHERE id=? AND candidato_id=?');$s->execute([$empresa,$cargo,$descricao,$inicio,$fim,(int)$atual,$id,$candidatoId]);if($s->rowCount()===0){$v=$pdo->prepare('SELECT id FROM experiencias WHERE id=? AND candidato_id=?');$v->execute([$id,$candidatoId]);if(!$v->fetch()){definirFlash('erros',['Experiência não encontrada.']);redirecionar('candidato/experiencias.php');}}definirFlash('sucesso','Experiência atualizada com sucesso.');}
+else{$s=$pdo->prepare('INSERT INTO experiencias(candidato_id,empresa,cargo,descricao,data_inicio,data_fim,emprego_atual) VALUES(?,?,?,?,?,?,?)');$s->execute([$candidatoId,$empresa,$cargo,$descricao,$inicio,$fim,(int)$atual]);definirFlash('sucesso','Experiência adicionada com sucesso.');}redirecionar('candidato/experiencias.php');
+

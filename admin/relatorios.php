@@ -1,0 +1,37 @@
+<?php
+
+declare(strict_types=1);
+require_once __DIR__.'/../includes/funcoes.php';require_once __DIR__.'/../includes/conexao.php';exigirAdministrador();
+$inicio=(string)($_GET['inicio']??date('Y-01-01'));$fim=(string)($_GET['fim']??date('Y-m-d'));
+if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$inicio))$inicio=date('Y-01-01');if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$fim))$fim=date('Y-m-d');if($inicio>$fim){[$inicio,$fim]=[$fim,$inicio];}
+
+$porCidade=$pdo->query("SELECT cid.nome,COUNT(*) total FROM candidatos c INNER JOIN usuarios u ON u.id=c.usuario_id INNER JOIN cidades cid ON cid.id=c.cidade_id WHERE u.status='ativo' GROUP BY cid.id,cid.nome ORDER BY total DESC,cid.nome LIMIT 15")->fetchAll();
+$porArea=$pdo->query("SELECT COALESCE(ap.nome,'Não informada') nome,COUNT(*) total FROM curriculos cu LEFT JOIN areas_profissionais ap ON ap.id=cu.area_profissional_id WHERE cu.visivel=1 GROUP BY ap.id,ap.nome ORDER BY total DESC,nome LIMIT 12")->fetchAll();
+$porEscolaridade=$pdo->query("SELECT f.nivel,COUNT(DISTINCT f.candidato_id) total FROM formacoes f GROUP BY f.nivel ORDER BY total DESC")->fetchAll();
+$situacao=[['nome'=>'Trabalhando','total'=>(int)$pdo->query('SELECT COUNT(DISTINCT candidato_id) FROM experiencias WHERE emprego_atual=1')->fetchColumn()],['nome'=>'Sem vínculo atual','total'=>(int)$pdo->query("SELECT COUNT(*) FROM candidatos c INNER JOIN usuarios u ON u.id=c.usuario_id WHERE u.status='ativo' AND NOT EXISTS(SELECT 1 FROM experiencias e WHERE e.candidato_id=c.id AND e.emprego_atual=1)")->fetchColumn()]];
+$q=$pdo->prepare("SELECT DATE_FORMAT(criado_em,'%m/%Y') mes,COUNT(*) total FROM candidatos WHERE criado_em BETWEEN ? AND DATE_ADD(?,INTERVAL 1 DAY) GROUP BY YEAR(criado_em),MONTH(criado_em) ORDER BY YEAR(criado_em),MONTH(criado_em)");$q->execute([$inicio,$fim]);$cadastrosPeriodo=$q->fetchAll();
+$q=$pdo->prepare("SELECT status,COUNT(*) total FROM selecoes_empresas WHERE selecionado_em BETWEEN ? AND DATE_ADD(?,INTERVAL 1 DAY) GROUP BY status");$q->execute([$inicio,$fim]);$selecoesStatus=$q->fetchAll();
+$niveis=['fundamental_incompleto'=>'Fundamental incompleto','fundamental_completo'=>'Fundamental completo','medio_incompleto'=>'Médio incompleto','medio_completo'=>'Médio completo','tecnico'=>'Técnico','superior_incompleto'=>'Superior incompleto','superior_completo'=>'Superior completo','pos_graduacao'=>'Pós-graduação','mestrado'=>'Mestrado','doutorado'=>'Doutorado'];
+$tituloPagina='Relatórios e gráficos';require_once __DIR__.'/../includes/header.php';require_once __DIR__.'/../includes/menu.php';
+$json=static fn(array $dados,string $rotulo):string=>json_encode(['labels'=>array_map(static fn($x)=>(string)($x[$rotulo]??''),$dados),'values'=>array_map(static fn($x)=>(int)$x['total'],$dados)],JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT);
+$escolaridadeGrafico=array_map(static fn($x)=>['nome'=>$niveis[$x['nivel']]??$x['nivel'],'total'=>$x['total']],$porEscolaridade);
+$queryPeriodo=http_build_query(['inicio'=>$inicio,'fim'=>$fim]);
+?>
+<main class="container py-5">
+ <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-4"><div><p class="text-primary fw-semibold mb-1">Inteligência de dados</p><h1 class="h2 mb-1">Relatórios e gráficos</h1><p class="text-secondary mb-0">Indicadores para apoiar políticas públicas de emprego e qualificação.</p></div><a href="<?=url('admin/dashboard.php')?>" class="btn btn-outline-secondary align-self-start">Voltar ao painel</a></div>
+ <div class="card shadow-sm border-0 mb-4"><div class="card-body p-4"><form method="get" class="row g-3 align-items-end"><div class="col-md-4"><label for="inicio" class="form-label">Data inicial</label><input type="date" id="inicio" name="inicio" class="form-control" value="<?=escapar($inicio)?>"></div><div class="col-md-4"><label for="fim" class="form-label">Data final</label><input type="date" id="fim" name="fim" class="form-control" value="<?=escapar($fim)?>"></div><div class="col-md-4 d-grid"><button class="btn btn-primary">Atualizar período</button></div></form></div></div>
+ <div class="card shadow-sm border-0 mb-5"><div class="card-body p-4"><h2 class="h5 mb-3">Baixar relatórios em PDF</h2><div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-danger" href="<?=url('admin/relatorio-pdf.php?tipo=candidatos&'.$queryPeriodo)?>"><i class="fa-solid fa-file-pdf me-2"></i>Candidatos</a><a class="btn btn-outline-danger" href="<?=url('admin/relatorio-pdf.php?tipo=empresas&'.$queryPeriodo)?>"><i class="fa-solid fa-file-pdf me-2"></i>Empresas</a><a class="btn btn-outline-danger" href="<?=url('admin/relatorio-pdf.php?tipo=selecoes&'.$queryPeriodo)?>"><i class="fa-solid fa-file-pdf me-2"></i>Seleções e contratações</a></div></div></div>
+ <div class="row g-4"><div class="col-lg-7"><div class="card shadow-sm border-0 h-100"><div class="card-body p-4"><h2 class="h5">Candidatos por cidade</h2><div style="height:360px"><canvas id="graficoCidades"></canvas></div></div></div></div><div class="col-lg-5"><div class="card shadow-sm border-0 h-100"><div class="card-body p-4"><h2 class="h5">Situação profissional</h2><div style="height:360px"><canvas id="graficoSituacao"></canvas></div></div></div></div><div class="col-lg-6"><div class="card shadow-sm border-0 h-100"><div class="card-body p-4"><h2 class="h5">Escolaridade</h2><div style="height:360px"><canvas id="graficoEscolaridade"></canvas></div></div></div></div><div class="col-lg-6"><div class="card shadow-sm border-0 h-100"><div class="card-body p-4"><h2 class="h5">Áreas profissionais</h2><div style="height:360px"><canvas id="graficoAreas"></canvas></div></div></div></div><div class="col-lg-7"><div class="card shadow-sm border-0 h-100"><div class="card-body p-4"><h2 class="h5">Cadastros no período</h2><div style="height:320px"><canvas id="graficoCadastros"></canvas></div></div></div></div><div class="col-lg-5"><div class="card shadow-sm border-0 h-100"><div class="card-body p-4"><h2 class="h5">Resultados das seleções</h2><div style="height:320px"><canvas id="graficoSelecoes"></canvas></div></div></div></div></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+<script>
+const criarGrafico=(id,type,dados,label,cores)=>new Chart(document.getElementById(id),{type,data:{labels:dados.labels,datasets:[{label,data:dados.values,backgroundColor:cores,borderColor:cores,borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:type==='doughnut'}},scales:type==='doughnut'?{}:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+const azul=['#0d6efd','#198754','#0dcaf0','#ffc107','#6f42c1','#fd7e14','#20c997','#dc3545','#6c757d','#6610f2','#d63384','#0a58ca','#157347','#087990','#997404'];
+criarGrafico('graficoCidades','bar',<?=$json($porCidade,'nome')?>,'Candidatos',azul);
+criarGrafico('graficoSituacao','doughnut',<?=$json($situacao,'nome')?>,'Candidatos',['#198754','#6c757d']);
+criarGrafico('graficoEscolaridade','bar',<?=$json($escolaridadeGrafico,'nome')?>,'Candidatos',azul);
+criarGrafico('graficoAreas','bar',<?=$json($porArea,'nome')?>,'Currículos',azul);
+criarGrafico('graficoCadastros','line',<?=$json($cadastrosPeriodo,'mes')?>,'Cadastros','#0d6efd');
+criarGrafico('graficoSelecoes','doughnut',<?=$json($selecoesStatus,'status')?>,'Registros',['#0d6efd','#198754','#6c757d']);
+</script>
+<?php require_once __DIR__.'/../includes/footer.php'; ?>
